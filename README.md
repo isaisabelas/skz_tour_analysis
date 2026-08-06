@@ -55,6 +55,10 @@ Este é um projeto de **portfólio educacional** que exemplifica um pipeline com
 
 ## Dashboard Interativo
 
+<img width="1629" height="573" alt="Captura de tela 2026-08-06 181009" src="https://github.com/user-attachments/assets/e32289e6-f4d8-4ce6-93ad-e37b3e936425" />
+<img width="1609" height="621" alt="Captura de tela 2026-08-06 181210" src="https://github.com/user-attachments/assets/45098c91-1362-40a6-9a31-fbaa273e4bf1" />
+<img width="1622" height="581" alt="Captura de tela 2026-08-06 181055" src="https://github.com/user-attachments/assets/c6735e50-7f6f-4729-9185-230d13355f01" />
+
 O projeto inclui um dashboard multi-página com análises detalhadas:
 
 ### Páginas do Dashboard
@@ -136,7 +140,7 @@ A tabela principal `skztour.03_gold.shows_unified` contém:
 
 Este é um projeto pessoal de análise de dados. Sugestões e melhorias são bem-vindas!
 
-## icença
+## Licença
 
 Este projeto é de uso **educacional e analítico**. Os dados foram coletados de fontes públicas (setlist.fm e Wikipedia) e complementados com dados sintéticos para fins didáticos.
 
