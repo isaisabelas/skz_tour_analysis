@@ -1,0 +1,1670 @@
+{
+  "datasets": [
+    {
+      "name": "country_analysis",
+      "displayName": "Country Analysis",
+      "queryLines": [
+        "SELECT\n",
+        "  country,\n",
+        "  event_year,\n",
+        "  event_date,\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  attendance,\n",
+        "  show_id,\n",
+        "  source\n",
+        "FROM\n",
+        "  skztour.03_gold.shows_unified\n",
+        "WHERE\n",
+        "  country IS NOT NULL"
+      ]
+    },
+    {
+      "name": "yoy_growth",
+      "displayName": "Year-over-Year Growth",
+      "queryLines": [
+        "WITH yearly_totals AS (\n",
+        "  SELECT\n",
+        "    country,\n",
+        "    event_year,\n",
+        "    SUM(attendance) as total_attendance\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    country IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    country,\n",
+        "    event_year\n",
+        "),\n",
+        "growth_calc AS (\n",
+        "  SELECT\n",
+        "    country,\n",
+        "    event_year,\n",
+        "    total_attendance,\n",
+        "    LAG(total_attendance) OVER (PARTITION BY country ORDER BY event_year) as prev_year_attendance,\n",
+        "    CASE\n",
+        "      WHEN\n",
+        "        LAG(total_attendance) OVER (PARTITION BY country ORDER BY event_year) IS NOT NULL\n",
+        "      THEN\n",
+        "        (\n",
+        "          (total_attendance - LAG(total_attendance) OVER (PARTITION BY country ORDER BY event_year))\n",
+        "            * 100.0\n",
+        "            / LAG(total_attendance) OVER (PARTITION BY country ORDER BY event_year)\n",
+        "        )\n",
+        "      ELSE NULL\n",
+        "    END as yoy_growth_pct\n",
+        "  FROM\n",
+        "    yearly_totals\n",
+        ")\n",
+        "SELECT\n",
+        "  country,\n",
+        "  event_year,\n",
+        "  total_attendance,\n",
+        "  prev_year_attendance,\n",
+        "  yoy_growth_pct\n",
+        "FROM\n",
+        "  growth_calc\n",
+        "WHERE\n",
+        "  yoy_growth_pct IS NOT NULL\n",
+        "ORDER BY\n",
+        "  country,\n",
+        "  event_year"
+      ]
+    },
+    {
+      "name": "seasonal_patterns",
+      "displayName": "Seasonal Patterns",
+      "queryLines": [
+        "SELECT\n",
+        "  MONTH(event_date) as month_num,\n",
+        "  DATE_FORMAT(event_date, 'MMMM') as month_name,\n",
+        "  CASE\n",
+        "    WHEN MONTH(event_date) IN (3, 4, 5) THEN 'Spring'\n",
+        "    WHEN MONTH(event_date) IN (6, 7, 8) THEN 'Summer'\n",
+        "    WHEN MONTH(event_date) IN (9, 10, 11) THEN 'Fall'\n",
+        "    ELSE 'Winter'\n",
+        "  END as season,\n",
+        "  country,\n",
+        "  event_year,\n",
+        "  attendance,\n",
+        "  show_id\n",
+        "FROM\n",
+        "  skztour.03_gold.shows_unified\n",
+        "WHERE\n",
+        "  event_date IS NOT NULL\n",
+        "ORDER BY\n",
+        "  month_num"
+      ]
+    },
+    {
+      "name": "tour_cycle_analysis",
+      "displayName": "Tour Cycle Analysis",
+      "queryLines": [
+        "SELECT\n",
+        "  CASE\n",
+        "    WHEN event_year = 2022 THEN '2022 - Maniac Tour'\n",
+        "    WHEN event_year = 2023 THEN '2023 - 5-Star Tour'\n",
+        "    WHEN event_year = 2025 THEN '2025 - dominATE Tour'\n",
+        "    WHEN event_year = 2026 THEN '2026 - Latest Tour'\n",
+        "    ELSE CONCAT(CAST(event_year AS STRING), ' - Other')\n",
+        "  END as tour_cycle,\n",
+        "  event_year,\n",
+        "  country,\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  event_date,\n",
+        "  attendance,\n",
+        "  show_id,\n",
+        "  source\n",
+        "FROM\n",
+        "  skztour.03_gold.shows_unified\n",
+        "WHERE\n",
+        "  event_year IS NOT NULL\n",
+        "ORDER BY\n",
+        "  event_year,\n",
+        "  event_date"
+      ]
+    },
+    {
+      "name": "venue_capacity_analysis",
+      "displayName": "Venue Capacity and Utilization",
+      "queryLines": [
+        "WITH venue_stats AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    COUNT(DISTINCT show_id) as total_shows,\n",
+        "    MAX(attendance) as max_attendance,\n",
+        "    AVG(attendance) as avg_attendance,\n",
+        "    MIN(attendance) as min_attendance,\n",
+        "    SUM(attendance) as total_attendance\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    venue_name IS NOT NULL\n",
+        "    AND attendance IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country\n",
+        "),\n",
+        "capacity_estimates AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    total_shows,\n",
+        "    max_attendance as estimated_capacity,\n",
+        "    avg_attendance,\n",
+        "    min_attendance,\n",
+        "    total_attendance,\n",
+        "    ROUND((avg_attendance * 100.0 / max_attendance), 2) as avg_utilization_pct,\n",
+        "    CASE\n",
+        "      WHEN max_attendance >= 50000 THEN 'Stadium (50K+)'\n",
+        "      WHEN max_attendance >= 20000 THEN 'Large Arena (20K-50K)'\n",
+        "      WHEN max_attendance >= 10000 THEN 'Arena (10K-20K)'\n",
+        "      ELSE 'Theater (<10K)'\n",
+        "    END as venue_category\n",
+        "  FROM\n",
+        "    venue_stats\n",
+        ")\n",
+        "SELECT\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  country,\n",
+        "  venue_category,\n",
+        "  total_shows,\n",
+        "  estimated_capacity,\n",
+        "  CAST(avg_attendance AS INT) as avg_attendance,\n",
+        "  avg_utilization_pct,\n",
+        "  total_attendance\n",
+        "FROM\n",
+        "  capacity_estimates\n",
+        "ORDER BY\n",
+        "  estimated_capacity DESC,\n",
+        "  avg_utilization_pct DESC"
+      ]
+    },
+    {
+      "name": "repeated_venues_markets",
+      "displayName": "Most Repeated Venues and Markets",
+      "queryLines": [
+        "SELECT\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  country,\n",
+        "  CONCAT(venue_city, ', ', country) as market,\n",
+        "  COUNT(DISTINCT show_id) as total_shows,\n",
+        "  SUM(attendance) as total_attendance,\n",
+        "  AVG(attendance) as avg_attendance_per_show,\n",
+        "  MIN(event_date) as first_show_date,\n",
+        "  MAX(event_date) as most_recent_show_date,\n",
+        "  COUNT(DISTINCT event_year) as years_visited\n",
+        "FROM\n",
+        "  skztour.03_gold.shows_unified\n",
+        "WHERE\n",
+        "  venue_name IS NOT NULL\n",
+        "  AND venue_city IS NOT NULL\n",
+        "  AND attendance IS NOT NULL\n",
+        "GROUP BY\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  country\n",
+        "HAVING\n",
+        "  COUNT(DISTINCT show_id) >= 2\n",
+        "ORDER BY\n",
+        "  total_shows DESC,\n",
+        "  total_attendance DESC"
+      ]
+    },
+    {
+      "name": "venue_type_success",
+      "displayName": "Venue Type Success Rates",
+      "queryLines": [
+        "WITH venue_stats AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    COUNT(DISTINCT show_id) as total_shows,\n",
+        "    MAX(attendance) as max_attendance,\n",
+        "    AVG(attendance) as avg_attendance,\n",
+        "    SUM(attendance) as total_attendance\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    venue_name IS NOT NULL\n",
+        "    AND attendance IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country\n",
+        "),\n",
+        "venue_categories AS (\n",
+        "  SELECT\n",
+        "    CASE\n",
+        "      WHEN max_attendance >= 50000 THEN 'Stadium (50K+)'\n",
+        "      WHEN max_attendance >= 20000 THEN 'Large Arena (20K-50K)'\n",
+        "      WHEN max_attendance >= 10000 THEN 'Arena (10K-20K)'\n",
+        "      ELSE 'Theater (<10K)'\n",
+        "    END as venue_type,\n",
+        "    venue_name,\n",
+        "    total_shows,\n",
+        "    max_attendance as estimated_capacity,\n",
+        "    avg_attendance,\n",
+        "    total_attendance,\n",
+        "    ROUND((avg_attendance * 100.0 / max_attendance), 2) as utilization_pct\n",
+        "  FROM\n",
+        "    venue_stats\n",
+        ")\n",
+        "SELECT\n",
+        "  venue_type,\n",
+        "  COUNT(DISTINCT venue_name) as venue_count,\n",
+        "  SUM(total_shows) as total_shows,\n",
+        "  AVG(utilization_pct) as avg_utilization_rate,\n",
+        "  AVG(avg_attendance) as avg_attendance_per_show,\n",
+        "  SUM(total_attendance) as total_attendance,\n",
+        "  AVG(estimated_capacity) as avg_venue_capacity,\n",
+        "  CASE\n",
+        "    WHEN AVG(utilization_pct) >= 85 THEN 'High Success'\n",
+        "    WHEN AVG(utilization_pct) >= 70 THEN 'Medium Success'\n",
+        "    ELSE 'Moderate Success'\n",
+        "  END as success_tier\n",
+        "FROM\n",
+        "  venue_categories\n",
+        "GROUP BY\n",
+        "  venue_type\n",
+        "ORDER BY\n",
+        "  avg_utilization_rate DESC"
+      ]
+    },
+    {
+      "name": "venue_profitability",
+      "displayName": "Venue Size Profitability Analysis",
+      "queryLines": [
+        "WITH venue_stats AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    COUNT(DISTINCT show_id) as total_shows,\n",
+        "    MAX(attendance) as max_attendance,\n",
+        "    AVG(attendance) as avg_attendance,\n",
+        "    SUM(attendance) as total_attendance\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    venue_name IS NOT NULL\n",
+        "    AND attendance IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country\n",
+        "),\n",
+        "venue_categories AS (\n",
+        "  SELECT\n",
+        "    CASE\n",
+        "      WHEN max_attendance >= 50000 THEN 'Stadium (50K+)'\n",
+        "      WHEN max_attendance >= 20000 THEN 'Large Arena (20K-50K)'\n",
+        "      WHEN max_attendance >= 10000 THEN 'Arena (10K-20K)'\n",
+        "      ELSE 'Theater (<10K)'\n",
+        "    END as venue_type,\n",
+        "    venue_name,\n",
+        "    total_shows,\n",
+        "    max_attendance as estimated_capacity,\n",
+        "    avg_attendance,\n",
+        "    total_attendance,\n",
+        "    ROUND((avg_attendance * 100.0 / max_attendance), 2) as utilization_pct,\n",
+        "    CASE\n",
+        "      WHEN max_attendance >= 50000 THEN 150\n",
+        "      WHEN max_attendance >= 20000 THEN 180\n",
+        "      WHEN max_attendance >= 10000 THEN 200\n",
+        "      ELSE 220\n",
+        "    END as est_avg_ticket_price\n",
+        "  FROM\n",
+        "    venue_stats\n",
+        ")\n",
+        "SELECT\n",
+        "  venue_type,\n",
+        "  COUNT(DISTINCT venue_name) as venue_count,\n",
+        "  SUM(total_shows) as total_shows,\n",
+        "  SUM(total_attendance) as total_attendance,\n",
+        "  AVG(avg_attendance) as avg_attendance_per_show,\n",
+        "  AVG(utilization_pct) as avg_utilization_rate,\n",
+        "  AVG(estimated_capacity) as avg_venue_capacity,\n",
+        "  MAX(est_avg_ticket_price) as est_ticket_price,\n",
+        "  SUM(total_attendance * est_avg_ticket_price) as estimated_gross_revenue,\n",
+        "  SUM(total_attendance * est_avg_ticket_price) / SUM(total_shows) as revenue_per_show,\n",
+        "  ROUND(\n",
+        "    (SUM(total_attendance * est_avg_ticket_price) / SUM(total_shows)) / AVG(estimated_capacity),\n",
+        "    2\n",
+        "  ) as revenue_efficiency\n",
+        "FROM\n",
+        "  venue_categories\n",
+        "GROUP BY\n",
+        "  venue_type\n",
+        "ORDER BY\n",
+        "  estimated_gross_revenue DESC"
+      ]
+    },
+    {
+      "name": "attendance_trends",
+      "displayName": "Attendance Trends Over Time",
+      "queryLines": [
+        "SELECT\n",
+        "  event_date,\n",
+        "  event_year,\n",
+        "  QUARTER(event_date) as quarter,\n",
+        "  country,\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  attendance,\n",
+        "  show_id,\n",
+        "  SUM(attendance) OVER (\n",
+        "      ORDER BY event_date\n",
+        "      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n",
+        "    ) as cumulative_attendance\n",
+        "FROM\n",
+        "  skztour.03_gold.shows_unified\n",
+        "WHERE\n",
+        "  event_date IS NOT NULL\n",
+        "  AND attendance IS NOT NULL\n",
+        "ORDER BY\n",
+        "  event_date"
+      ]
+    },
+    {
+      "name": "next_tour_recommendations",
+      "displayName": "Next Tour Recommendations",
+      "queryLines": [
+        "WITH country_metrics AS (\n",
+        "  SELECT\n",
+        "    country,\n",
+        "    COUNT(DISTINCT show_id) as total_shows,\n",
+        "    AVG(attendance) as avg_attendance,\n",
+        "    SUM(attendance) as total_attendance,\n",
+        "    MAX(event_date) as last_visit_date,\n",
+        "    COUNT(DISTINCT venue_city) as cities_visited,\n",
+        "    COUNT(DISTINCT event_year) as years_active\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    country IS NOT NULL\n",
+        "    AND attendance IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    country\n",
+        "),\n",
+        "venue_performance AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    COUNT(DISTINCT show_id) as shows_held,\n",
+        "    AVG(attendance) as avg_attendance,\n",
+        "    MAX(attendance) as max_capacity,\n",
+        "    ROUND((AVG(attendance) * 100.0 / MAX(attendance)), 2) as utilization_rate,\n",
+        "    MAX(event_date) as last_show_date\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    venue_name IS NOT NULL\n",
+        "    AND attendance IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country\n",
+        "),\n",
+        "country_scores AS (\n",
+        "  SELECT\n",
+        "    country,\n",
+        "    total_shows,\n",
+        "    avg_attendance,\n",
+        "    total_attendance,\n",
+        "    last_visit_date,\n",
+        "    cities_visited,\n",
+        "    years_active,\n",
+        "    DATEDIFF(CURRENT_DATE(), last_visit_date) as days_since_last_visit,\n",
+        "    -- Scoring factors (0-100 scale)\n",
+        "    LEAST(100, (avg_attendance / 300.0)) as attendance_score,\n",
+        "    LEAST(100, (total_shows * 10)) as market_proven_score,\n",
+        "    LEAST(100, (DATEDIFF(CURRENT_DATE(), last_visit_date) / 3.65)) as recency_score,\n",
+        "    CASE\n",
+        "      WHEN total_shows >= 30 THEN 100\n",
+        "      WHEN total_shows >= 20 THEN 80\n",
+        "      WHEN total_shows >= 10 THEN 60\n",
+        "      WHEN total_shows >= 5 THEN 40\n",
+        "      ELSE 20\n",
+        "    END as market_maturity_score\n",
+        "  FROM\n",
+        "    country_metrics\n",
+        ")\n",
+        "SELECT\n",
+        "  country,\n",
+        "  total_shows,\n",
+        "  CAST(avg_attendance AS INT) as avg_attendance,\n",
+        "  cities_visited,\n",
+        "  days_since_last_visit,\n",
+        "  ROUND(\n",
+        "    (attendance_score + market_proven_score + recency_score + market_maturity_score) / 4,\n",
+        "    2\n",
+        "  ) as overall_score,\n",
+        "  CASE\n",
+        "    WHEN\n",
+        "      (attendance_score + market_proven_score + recency_score + market_maturity_score) / 4 >= 80\n",
+        "    THEN\n",
+        "      'High Priority'\n",
+        "    WHEN\n",
+        "      (attendance_score + market_proven_score + recency_score + market_maturity_score) / 4 >= 60\n",
+        "    THEN\n",
+        "      'Medium Priority'\n",
+        "    ELSE 'Low Priority'\n",
+        "  END as recommendation_tier,\n",
+        "  CASE\n",
+        "    WHEN days_since_last_visit > 365 THEN 'Ready for Return'\n",
+        "    WHEN days_since_last_visit > 180 THEN 'Consider Soon'\n",
+        "    WHEN days_since_last_visit <= 180 THEN 'Recent Visit'\n",
+        "    ELSE 'Not Visited Recently'\n",
+        "  END as visit_timing,\n",
+        "  last_visit_date\n",
+        "FROM\n",
+        "  country_scores\n",
+        "ORDER BY\n",
+        "  overall_score DESC"
+      ]
+    },
+    {
+      "name": "specific_venue_recommendations",
+      "displayName": "Specific Venue Recommendations",
+      "queryLines": [
+        "WITH venue_performance AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    COUNT(DISTINCT show_id) as shows_held,\n",
+        "    AVG(attendance) as avg_attendance,\n",
+        "    MAX(attendance) as max_capacity,\n",
+        "    SUM(attendance) as total_attendance,\n",
+        "    ROUND((AVG(attendance) * 100.0 / MAX(attendance)), 2) as utilization_rate,\n",
+        "    MAX(event_date) as last_show_date,\n",
+        "    MIN(event_date) as first_show_date,\n",
+        "    CASE\n",
+        "      WHEN MAX(attendance) >= 50000 THEN 'Stadium (50K+)'\n",
+        "      WHEN MAX(attendance) >= 20000 THEN 'Large Arena (20K-50K)'\n",
+        "      WHEN MAX(attendance) >= 10000 THEN 'Arena (10K-20K)'\n",
+        "      ELSE 'Theater (<10K)'\n",
+        "    END as venue_category\n",
+        "  FROM\n",
+        "    skztour.03_gold.shows_unified\n",
+        "  WHERE\n",
+        "    venue_name IS NOT NULL\n",
+        "    AND attendance IS NOT NULL\n",
+        "  GROUP BY\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country\n",
+        "),\n",
+        "venue_scoring AS (\n",
+        "  SELECT\n",
+        "    venue_name,\n",
+        "    venue_city,\n",
+        "    country,\n",
+        "    venue_category,\n",
+        "    shows_held,\n",
+        "    CAST(avg_attendance AS INT) as avg_attendance,\n",
+        "    max_capacity,\n",
+        "    utilization_rate,\n",
+        "    total_attendance,\n",
+        "    DATEDIFF(CURRENT_DATE(), last_show_date) as days_since_last_show,\n",
+        "    -- Performance scoring (0-100 scale)\n",
+        "    LEAST(100, utilization_rate) as utilization_score,\n",
+        "    CASE\n",
+        "      WHEN shows_held >= 5 THEN 100\n",
+        "      WHEN shows_held >= 3 THEN 80\n",
+        "      WHEN shows_held >= 2 THEN 60\n",
+        "      ELSE 40\n",
+        "    END as proven_venue_score,\n",
+        "    LEAST(100, (avg_attendance / 300.0)) as attendance_strength_score,\n",
+        "    LEAST(100, (DATEDIFF(CURRENT_DATE(), last_show_date) / 3.65)) as return_readiness_score\n",
+        "  FROM\n",
+        "    venue_performance\n",
+        ")\n",
+        "SELECT\n",
+        "  venue_name,\n",
+        "  venue_city,\n",
+        "  country,\n",
+        "  CONCAT(venue_city, ', ', country) as market,\n",
+        "  venue_category,\n",
+        "  shows_held,\n",
+        "  avg_attendance,\n",
+        "  max_capacity,\n",
+        "  utilization_rate,\n",
+        "  days_since_last_show,\n",
+        "  ROUND(\n",
+        "    (utilization_score + proven_venue_score + attendance_strength_score + return_readiness_score)\n",
+        "      / 4,\n",
+        "    2\n",
+        "  ) as recommendation_score,\n",
+        "  CASE\n",
+        "    WHEN\n",
+        "      (utilization_score + proven_venue_score + attendance_strength_score + return_readiness_score)\n",
+        "        / 4 >= 85\n",
+        "    THEN\n",
+        "      'Top Choice'\n",
+        "    WHEN\n",
+        "      (utilization_score + proven_venue_score + attendance_strength_score + return_readiness_score)\n",
+        "        / 4 >= 70\n",
+        "    THEN\n",
+        "      'Strong Option'\n",
+        "    WHEN\n",
+        "      (utilization_score + proven_venue_score + attendance_strength_score + return_readiness_score)\n",
+        "        / 4 >= 55\n",
+        "    THEN\n",
+        "      'Consider'\n",
+        "    ELSE 'Lower Priority'\n",
+        "  END as recommendation_tier,\n",
+        "  CASE\n",
+        "    WHEN days_since_last_show > 365 THEN 'Ready Now'\n",
+        "    WHEN days_since_last_show > 180 THEN 'Soon'\n",
+        "    WHEN days_since_last_show <= 180 THEN 'Recent'\n",
+        "    ELSE 'New Venue'\n",
+        "  END as timing_recommendation\n",
+        "FROM\n",
+        "  venue_scoring\n",
+        "WHERE\n",
+        "  shows_held >= 1\n",
+        "ORDER BY\n",
+        "  recommendation_score DESC,\n",
+        "  utilization_rate DESC"
+      ]
+    }
+  ],
+  "relationshipGraphs": [
+    {
+      "sources": [
+        {
+          "name": "Country_Analysis",
+          "datasetName": "country_analysis"
+        },
+        {
+          "name": "YearoverYear_Growth",
+          "datasetName": "yoy_growth"
+        },
+        {
+          "name": "Seasonal_Patterns",
+          "datasetName": "seasonal_patterns"
+        },
+        {
+          "name": "Tour_Cycle_Analysis",
+          "datasetName": "tour_cycle_analysis"
+        },
+        {
+          "name": "Venue_Capacity_and_Utilization",
+          "datasetName": "venue_capacity_analysis"
+        },
+        {
+          "name": "Most_Repeated_Venues_and_Markets",
+          "datasetName": "repeated_venues_markets"
+        },
+        {
+          "name": "Venue_Type_Success_Rates",
+          "datasetName": "venue_type_success"
+        },
+        {
+          "name": "Venue_Size_Profitability_Analysis",
+          "datasetName": "venue_profitability"
+        },
+        {
+          "name": "Attendance_Trends_Over_Time",
+          "datasetName": "attendance_trends"
+        },
+        {
+          "name": "Next_Tour_Recommendations",
+          "datasetName": "next_tour_recommendations"
+        },
+        {
+          "name": "Specific_Venue_Recommendations",
+          "datasetName": "specific_venue_recommendations"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "860d1d57",
+      "displayName": "Geographic",
+      "layout": [
+        {
+          "widget": {
+            "name": "market_concentration",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "country_analysis",
+                  "fields": [
+                    {
+                      "name": "count(show_id)",
+                      "expression": "COUNT(`show_id`)"
+                    },
+                    {
+                      "name": "country",
+                      "expression": "`country`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Market Concentration (% of Total Shows)",
+                "showTitle": true
+              },
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "count(show_id)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Shows"
+                },
+                "color": {
+                  "fieldName": "country",
+                  "displayName": "country",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "country_performance_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "country_analysis",
+                  "fields": [
+                    {
+                      "name": "country",
+                      "expression": "`country`"
+                    },
+                    {
+                      "name": "count(show_id)",
+                      "expression": "COUNT(`show_id`)"
+                    },
+                    {
+                      "name": "sum(attendance)",
+                      "expression": "SUM(`attendance`)"
+                    },
+                    {
+                      "name": "avg(attendance)",
+                      "expression": "AVG(`attendance`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Country Performance Overview",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "country"
+                  },
+                  {
+                    "fieldName": "count(show_id)"
+                  },
+                  {
+                    "fieldName": "sum(attendance)"
+                  },
+                  {
+                    "fieldName": "avg(attendance)"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "shows_by_country",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "count(Country_Analysis__show_id)",
+                      "expression": "COUNT(`Country_Analysis`.`show_id`)"
+                    },
+                    {
+                      "name": "Country_Analysis__country",
+                      "expression": "`Country_Analysis`.`country`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Total Shows by Country",
+                "showTitle": true
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 3
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "count(Country_Analysis__show_id)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Country_Analysis__country",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "attendance_by_country",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Country_Analysis__attendance)",
+                      "expression": "SUM(`Country_Analysis`.`attendance`)"
+                    },
+                    {
+                      "name": "Country_Analysis__country",
+                      "expression": "`Country_Analysis`.`country`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Total Attendance by Country",
+                "showTitle": true
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 3
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(Country_Analysis__attendance)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Country_Analysis__country",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "821bb313",
+      "displayName": "Temporal",
+      "layout": [
+        {
+          "widget": {
+            "name": "56b61e48",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "YearoverYear_Growth__country",
+                      "expression": "`YearoverYear_Growth`.`country`"
+                    },
+                    {
+                      "name": "YearoverYear_Growth__event_year",
+                      "expression": "`YearoverYear_Growth`.`event_year`"
+                    },
+                    {
+                      "name": "YearoverYear_Growth__yoy_growth_pct",
+                      "expression": "`YearoverYear_Growth`.`yoy_growth_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Year-over-Year Growth Trends",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "YearoverYear_Growth__event_year",
+                  "displayName": "Year",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "YearoverYear_Growth__yoy_growth_pct",
+                  "displayName": "YoY Growth %",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "YearoverYear_Growth__country",
+                  "displayName": "Country",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "fe78916b",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Seasonal_Patterns__season",
+                      "expression": "`Seasonal_Patterns`.`season`"
+                    },
+                    {
+                      "name": "sum(Seasonal_Patterns__attendance)",
+                      "expression": "SUM(`Seasonal_Patterns`.`attendance`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Monthly & Seasonal Patterns",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "y": {
+                  "fieldName": "sum(Seasonal_Patterns__attendance)",
+                  "displayName": "Total Attendance",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Seasonal_Patterns__season",
+                  "displayName": "Season",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "73eabb2d",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Tour_Cycle_Analysis__tour_cycle",
+                      "expression": "`Tour_Cycle_Analysis`.`tour_cycle`"
+                    },
+                    {
+                      "name": "count(Tour_Cycle_Analysis__show_id)",
+                      "expression": "COUNT(`Tour_Cycle_Analysis`.`show_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Tour Cycle Analysis",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Tour_Cycle_Analysis__tour_cycle",
+                  "displayName": "Tour Cycle",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(Tour_Cycle_Analysis__show_id)",
+                  "displayName": "Number of Shows",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Tour_Cycle_Analysis__tour_cycle",
+                  "displayName": "Tour Era",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 4
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "cb750099",
+      "displayName": "Venue",
+      "layout": [
+        {
+          "widget": {
+            "name": "a4d453b6",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Venue_Capacity_and_Utilization__venue_category",
+                      "expression": "`Venue_Capacity_and_Utilization`.`venue_category`"
+                    },
+                    {
+                      "name": "Venue_Capacity_and_Utilization__venue_name",
+                      "expression": "`Venue_Capacity_and_Utilization`.`venue_name`"
+                    },
+                    {
+                      "name": "avg(Venue_Capacity_and_Utilization__avg_utilization_pct)",
+                      "expression": "AVG(`Venue_Capacity_and_Utilization`.`avg_utilization_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Venue Capacity & Utilization Analysis",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Venue_Capacity_and_Utilization__venue_name",
+                  "displayName": "Venue",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(Venue_Capacity_and_Utilization__avg_utilization_pct)",
+                  "displayName": "Average Utilization %",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Venue_Capacity_and_Utilization__venue_category",
+                  "displayName": "Venue Size",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "e71d0b83",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Most_Repeated_Venues_and_Markets__market",
+                      "expression": "`Most_Repeated_Venues_and_Markets`.`market`"
+                    },
+                    {
+                      "name": "sum(Most_Repeated_Venues_and_Markets__total_shows)",
+                      "expression": "SUM(`Most_Repeated_Venues_and_Markets`.`total_shows`)"
+                    },
+                    {
+                      "name": "Most_Repeated_Venues_and_Markets__venue_name",
+                      "expression": "`Most_Repeated_Venues_and_Markets`.`venue_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Most Repeated Venues & Markets",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(Most_Repeated_Venues_and_Markets__total_shows)",
+                  "displayName": "Number of Shows",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Most_Repeated_Venues_and_Markets__venue_name",
+                  "displayName": "Venue",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Most_Repeated_Venues_and_Markets__market",
+                  "displayName": "Market",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "3dc4f5eb",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Venue_Type_Success_Rates__success_tier",
+                      "expression": "`Venue_Type_Success_Rates`.`success_tier`"
+                    },
+                    {
+                      "name": "avg(Venue_Type_Success_Rates__avg_utilization_rate)",
+                      "expression": "AVG(`Venue_Type_Success_Rates`.`avg_utilization_rate`)"
+                    },
+                    {
+                      "name": "Venue_Type_Success_Rates__venue_type",
+                      "expression": "`Venue_Type_Success_Rates`.`venue_type`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Venue Types - Success Rates",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(Venue_Type_Success_Rates__avg_utilization_rate)",
+                  "displayName": "Average Utilization Rate %",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Venue_Type_Success_Rates__venue_type",
+                  "displayName": "Venue Type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Venue_Type_Success_Rates__success_tier",
+                  "displayName": "Success Level",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 5,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "5b6191ad",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Venue_Size_Profitability_Analysis__venue_type",
+                      "expression": "`Venue_Size_Profitability_Analysis`.`venue_type`"
+                    },
+                    {
+                      "name": "sum(Venue_Size_Profitability_Analysis__estimated_gross_revenue)",
+                      "expression": "SUM(`Venue_Size_Profitability_Analysis`.`estimated_gross_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Profitability by Venue Size",
+                "showTitle": true
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(Venue_Size_Profitability_Analysis__estimated_gross_revenue)",
+                  "displayName": "Estimated Gross Revenue ($)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Venue_Size_Profitability_Analysis__venue_type",
+                  "displayName": "Venue Type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Venue_Size_Profitability_Analysis__venue_type",
+                  "displayName": "Venue Category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 11,
+            "width": 7,
+            "height": 3
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "2ebd2b34",
+      "displayName": "Predictions",
+      "layout": [
+        {
+          "widget": {
+            "name": "c76e8a97",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Next_Tour_Recommendations__recommendation_tier",
+                      "expression": "`Next_Tour_Recommendations`.`recommendation_tier`"
+                    },
+                    {
+                      "name": "avg(Next_Tour_Recommendations__overall_score)",
+                      "expression": "AVG(`Next_Tour_Recommendations`.`overall_score`)"
+                    },
+                    {
+                      "name": "Next_Tour_Recommendations__country",
+                      "expression": "`Next_Tour_Recommendations`.`country`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Best Countries & Venues for Next Tour",
+                "showTitle": true,
+                "description": "Scored by attendance, market maturity, and optimal timing"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(Next_Tour_Recommendations__overall_score)",
+                  "displayName": "Overall Score",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Next_Tour_Recommendations__country",
+                  "displayName": "Country",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Next_Tour_Recommendations__recommendation_tier",
+                  "displayName": "Priority Level",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "f78e0498",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Specific_Venue_Recommendations__recommendation_tier",
+                      "expression": "`Specific_Venue_Recommendations`.`recommendation_tier`"
+                    },
+                    {
+                      "name": "avg(Specific_Venue_Recommendations__recommendation_score)",
+                      "expression": "AVG(`Specific_Venue_Recommendations`.`recommendation_score`)"
+                    },
+                    {
+                      "name": "Specific_Venue_Recommendations__venue_name",
+                      "expression": "`Specific_Venue_Recommendations`.`venue_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Specific Venue Recommendations",
+                "showTitle": true,
+                "description": "Top venues scored by performance, utilization, and timing"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(Specific_Venue_Recommendations__recommendation_score)",
+                  "displayName": "Recommendation Score",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Specific_Venue_Recommendations__venue_name",
+                  "displayName": "Venue",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Specific_Venue_Recommendations__recommendation_tier",
+                  "displayName": "Tier",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "763e6aeb",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Specific_Venue_Recommendations__timing_recommendation",
+                      "expression": "`Specific_Venue_Recommendations`.`timing_recommendation`"
+                    },
+                    {
+                      "name": "sum(Specific_Venue_Recommendations__days_since_last_show)",
+                      "expression": "SUM(`Specific_Venue_Recommendations`.`days_since_last_show`)"
+                    },
+                    {
+                      "name": "Specific_Venue_Recommendations__venue_name",
+                      "expression": "`Specific_Venue_Recommendations`.`venue_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "title": "Venue Timing Recommendations",
+                "showTitle": true,
+                "description": "Optimal scheduling windows for venue bookings"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(Specific_Venue_Recommendations__days_since_last_show)",
+                  "displayName": "Days Since Last Show",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Specific_Venue_Recommendations__venue_name",
+                  "displayName": "Venue",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Specific_Venue_Recommendations__timing_recommendation",
+                  "displayName": "Timing Status",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 4,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {
+        "light": "#FAFAFB",
+        "dark": "#1F272D"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#11171C"
+      },
+      "fontColor": {
+        "light": "#11171C",
+        "dark": "#E8ECF0"
+      },
+      "selectionColor": {
+        "light": "#2272B4",
+        "dark": "#8ACAFF"
+      },
+      "widgetHeaderAlignment": "LEFT",
+      "fontFamily": "JetBrains Mono",
+      "fontSettings": {
+        "base": {
+          "fontFamily": "JetBrains Mono"
+        },
+        "widgetTitle": {
+          "fontFamily": "JetBrains Mono"
+        }
+      }
+    },
+    "applyModeEnabled": false
+  }
+}
